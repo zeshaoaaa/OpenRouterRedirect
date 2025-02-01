@@ -1,1 +1,0 @@
-FROM qwen2:3b-instruct\nPARAMETER max_tokens=4096\nPARAMETER context_length=4096
