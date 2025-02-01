@@ -1,0 +1,110 @@
+package com.example.routes
+
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import org.slf4j.LoggerFactory
+
+data class ChatRequest(
+    val model: String,
+    val messages: List<Message>,
+    val temperature: Double? = null,
+    val stream: Boolean? = false
+)
+
+data class Message(
+    val role: String,
+    val content: JsonElement  // 使用 JsonElement 来支持字符串或数组类型
+)
+
+fun Route.chatRoutes() {
+    // 设置 NO_PROXY 环境变量
+    System.setProperty("NO_PROXY", "localhost,127.0.0.1")
+    
+    val client = HttpClient(CIO) {
+        engine {
+            proxy = null  // 禁用代理
+        }
+    }
+    val logger = LoggerFactory.getLogger("ChatRoutes")
+    val gson = Gson()
+    val prettyGson = GsonBuilder().setPrettyPrinting().create()
+
+    // 把 RooCode 的请求转到 Ollama
+    post("/api/v1/chat/completions") {
+        try {
+            // 读取请求体
+            val requestText = call.receiveText()
+            val request = gson.fromJson(requestText, ChatRequest::class.java)
+            
+            // 获取所有请求头
+            val headers = call.request.headers
+            
+            // 记录请求信息
+            logger.info("""
+                收到聊天请求:
+                --- 请求头 ---
+                ${headers.entries().joinToString("\n                ") { "${it.key}: ${it.value.joinToString(", ")}" }}
+                
+                --- 请求体 ---
+                ${prettyGson.toJson(request).split("\n").joinToString("\n                ")}
+            """.trimIndent())
+            
+            // 准备发送到 Ollama 的请求
+            val ollamaResponse = client.post("http://localhost:11434/api/chat") {
+                contentType(ContentType.Application.Json)
+                
+                // 转发原始请求头
+                headers.forEach { key, values ->
+                    values.forEach { value ->
+                        header(key, value)
+                    }
+                }
+                
+                // 构建 Ollama 请求体
+                val ollamaRequestBody = mapOf(
+                    "model" to "qwen2.5-coder",
+                    "messages" to request.messages.map { message ->
+                        mapOf(
+                            "role" to message.role,
+                            "content" to message.content
+                        )
+                    },
+                    "temperature" to (request.temperature ?: 0.7),
+                    "stream" to (request.stream ?: false)
+                )
+                
+                // 记录请求体
+                logger.info("""
+                    发送到 Ollama 的请求体:
+                    ${prettyGson.toJson(ollamaRequestBody).split("\n").joinToString("\n                    ")}
+                """.trimIndent())
+                
+                setBody(gson.toJson(ollamaRequestBody))
+            }
+
+            // 返回 Ollama 的响应
+            val responseText = ollamaResponse.bodyAsText()
+            
+            // 记录 Ollama 的响应
+            logger.info("""
+                收到 Ollama 响应:
+                ${prettyGson.toJson(gson.fromJson(responseText, JsonElement::class.java)).split("\n").joinToString("\n                ")}
+            """.trimIndent())
+
+            call.respondText(responseText, ContentType.Application.Json)
+            
+        } catch (e: Exception) {
+            logger.error("处理聊天请求时发生错误: ${e.message}", e)
+            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+        }
+    }
+} 

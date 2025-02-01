@@ -1,0 +1,5 @@
+1. 启动应用前先结束上一个 3000 端口的应用
+2. 改完代码后要重启应用
+3. 这是一个 ktor 应用
+4. 如果需要 ollama 的话，就先关闭 ollama 进程，然后执行命令： NO_PROXY=localhost,127.0.0.1 OLLAMA_HOST=127.0.0.1:11434 OLLAMA_DEBUG=1 OLLAMA_CONTEXT_LENGTH=8096 ollama serve
+5. 修改文件后提交代码，git commit 和 git push

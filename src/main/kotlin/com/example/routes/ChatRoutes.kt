@@ -79,6 +79,7 @@ fun Route.chatRoutes() {
     post("/api/v1/chat/completions") {
         val modelType = when (CURRENT_MODEL_TYPE.uppercase()) {
             "GLM" -> ModelType.GLM
+            "KIMI" -> ModelType.KIMI
             else -> ModelType.OLLAMA
         }
         handleChatRequest(call, client, logger, gson, prettyGson, modelType)
